@@ -7,9 +7,6 @@
     state: present
     template: managedcluster.yaml.j2
 
-# On the RHACM Hub Cluster
-# kubectl get secret **my-aws-cluster-name**-import -n **my-aws-cluster-name** -o jsonpath='{.data.import\.yaml}' | base64 --decode > import-manifest.yaml
-
 - name: Wait for import manifest to be available 
   kubernetes.core.k8s_info:
     host: "{{ ocp4_workload_register_sno_rhacm_openshift_api_url }}"
@@ -31,14 +28,19 @@
   ansible.builtin.set_fact:
     _ocp4_workload_register_sno_import_manifest: "{{ r_import_secret.resources[0].data['import.yaml'] | b64decode }}"
 
-- name: Deploy import manifest to target cluster
+- name: Create Klusterlet CRD on target cluster
+  kubernetes.core.k8s:
+    host: "{{ ocp4_workload_register_sno_aws_openshift_api_url }}"
+    api_key: "{{ ocp4_workload_register_sno_aws_openshift_api_token }}"
+    validate_certs: false
+    state: present
+    src: klusterlet-crd.yaml
+
+- name: Apply all import resources to target cluster
   kubernetes.core.k8s:
     host: "{{ ocp4_workload_register_sno_aws_openshift_api_url }}"
     api_key: "{{ ocp4_workload_register_sno_aws_openshift_api_token }}"
     validate_certs: false
     state: present
     definition: "{{ _ocp4_workload_register_sno_import_manifest }}"
-  register: r_import_result
-  retries: 5
-  delay: 60
-  until: r_import_result is not failed
+    apply: true
