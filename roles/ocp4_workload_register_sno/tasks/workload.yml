@@ -31,6 +31,10 @@
   ansible.builtin.set_fact:
     _ocp4_workload_register_sno_import_manifest: "{{ r_import_secret.resources[0].data['import.yaml'] | b64decode }}"
 
+- name: Debug import manifest
+  ansible.builtin.debug:
+    var: _ocp4_workload_register_sno_import_manifest
+
 - name: Deploy import manifest to target cluster
   kubernetes.core.k8s:
     host: "{{ ocp4_workload_register_sno_aws_openshift_api_url }}"
@@ -39,6 +43,6 @@
     state: present
     definition: "{{ _ocp4_workload_register_sno_import_manifest }}"
   register: r_import_result
-  retries: 5
-  delay: 60
+  retries: 1
+  delay: 30
   until: r_import_result is not failed
