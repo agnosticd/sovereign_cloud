@@ -1,0 +1,44 @@
+---
+- name: Set up ManagedCluster Resource on RHACM
+  kubernetes.core.k8s:
+    host: "{{ ocp4_workload_register_sno_rhacm_openshift_api_url }}"
+    api_key: "{{ ocp4_workload_register_sno_rhacm_openshift_api_token }}"
+    validate_certs: false
+    state: present
+    template: managedcluster.yaml.j2
+
+# On the RHACM Hub Cluster
+# kubectl get secret **my-aws-cluster-name**-import -n **my-aws-cluster-name** -o jsonpath='{.data.import\.yaml}' | base64 --decode > import-manifest.yaml
+
+- name: Wait for import manifest to be available 
+  kubernetes.core.k8s_info:
+    host: "{{ ocp4_workload_register_sno_rhacm_openshift_api_url }}"
+    api_key: "{{ ocp4_workload_register_sno_rhacm_openshift_api_token }}"
+    validate_certs: false
+    api_version: v1
+    kind: Secret
+    name: "{{ ocp4_workload_register_sno_cluster_name }}-import"
+    namespace: "{{ ocp4_workload_register_sno_cluster_name }}"
+  register: r_import_secret
+  retries: 30
+  delay: 5
+  until:
+  - r_import_secret.resources | length > 0
+  - r_import_secret.resources[0].data is defined
+  - r_import_secret.resources[0].data['import.yaml'] is defined
+
+- name: Extract and decode import manifest from secret
+  ansible.builtin.set_fact:
+    _ocp4_workload_register_sno_import_manifest: "{{ r_import_secret.resources[0].data['import.yaml'] | b64decode }}"
+
+- name: Deploy import manifest to target cluster
+  kubernetes.core.k8s:
+    host: "{{ ocp4_workload_register_sno_aws_openshift_api_url }}"
+    api_key: "{{ ocp4_workload_register_sno_aws_openshift_api_token }}"
+    validate_certs: false
+    state: present
+    definition: "{{ ocp4_workload_register_sno_import_manifest }}"
+  register: r_import_result
+  retries: 5
+  delay: 60
+  until: r_import_result.success | bool
