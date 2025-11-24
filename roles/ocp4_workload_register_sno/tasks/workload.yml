@@ -41,4 +41,4 @@
   register: r_import_result
   retries: 5
   delay: 60
-  until: r_import_result.success | bool
+  until: r_import_result is not failed
