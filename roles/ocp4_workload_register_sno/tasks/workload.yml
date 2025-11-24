@@ -31,38 +31,29 @@
   ansible.builtin.set_fact:
     _ocp4_workload_register_sno_import_manifest: "{{ r_import_secret.resources[0].data['import.yaml'] | b64decode }}"
 
-- name: Split import manifest into individual resource documents
-  ansible.builtin.set_fact:
-    _ocp4_workload_register_sno_import_resources: "{{ _ocp4_workload_register_sno_import_manifest | split('---') | select('match', '(?s).*\\S.*') | list }}"
-
-- name: Separate CRD from other resources
-  ansible.builtin.set_fact:
-    _ocp4_workload_register_sno_klusterlet_crd: "{{ _ocp4_workload_register_sno_import_resources | select('search', 'kind: CustomResourceDefinition') | first }}"
-    _ocp4_workload_register_sno_other_resources: "{{ _ocp4_workload_register_sno_import_resources | reject('search', 'kind: CustomResourceDefinition') | list }}"
-
 - name: Create Klusterlet CRD on target cluster
   kubernetes.core.k8s:
     host: "{{ ocp4_workload_register_sno_aws_openshift_api_url }}"
     api_key: "{{ ocp4_workload_register_sno_aws_openshift_api_token }}"
     validate_certs: false
     state: present
-    definition: "{{ _ocp4_workload_register_sno_klusterlet_crd }}"
+    src: klusterlet-crd.yaml
 
-- name: Wait for Klusterlet CRD to be established
-  kubernetes.core.k8s_info:
-    host: "{{ ocp4_workload_register_sno_aws_openshift_api_url }}"
-    api_key: "{{ ocp4_workload_register_sno_aws_openshift_api_token }}"
-    validate_certs: false
-    api_version: apiextensions.k8s.io/v1
-    kind: CustomResourceDefinition
-    name: klusterlets.operator.open-cluster-management.io
-  register: r_klusterlet_crd
-  retries: 30
-  delay: 2
-  until:
-  - r_klusterlet_crd.resources | length > 0
-  - r_klusterlet_crd.resources[0].status.conditions is defined
-  - r_klusterlet_crd.resources[0].status.conditions | selectattr('type', 'equalto', 'Established') | selectattr('status', 'equalto', 'True') | list | length > 0
+# - name: Wait for Klusterlet CRD to be established
+#   kubernetes.core.k8s_info:
+#     host: "{{ ocp4_workload_register_sno_aws_openshift_api_url }}"
+#     api_key: "{{ ocp4_workload_register_sno_aws_openshift_api_token }}"
+#     validate_certs: false
+#     api_version: apiextensions.k8s.io/v1
+#     kind: CustomResourceDefinition
+#     name: klusterlets.operator.open-cluster-management.io
+#   register: r_klusterlet_crd
+#   retries: 30
+#   delay: 2
+#   until:
+#   - r_klusterlet_crd.resources | length > 0
+#   - r_klusterlet_crd.resources[0].status.conditions is defined
+#   - r_klusterlet_crd.resources[0].status.conditions | selectattr('type', 'equalto', 'Established') | selectattr('status', 'equalto', 'True') | list | length > 0
 
 - name: Apply all import resources to target cluster
   kubernetes.core.k8s:
@@ -70,6 +61,5 @@
     api_key: "{{ ocp4_workload_register_sno_aws_openshift_api_token }}"
     validate_certs: false
     state: present
-    definition: "{{ item }}"
+    definition: "{{ _ocp4_workload_register_sno_import_manifest }}"
     apply: true
-  loop: "{{ _ocp4_workload_register_sno_other_resources }}"
