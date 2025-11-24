@@ -31,18 +31,20 @@
   ansible.builtin.set_fact:
     _ocp4_workload_register_sno_import_manifest: "{{ r_import_secret.resources[0].data['import.yaml'] | b64decode }}"
 
-- name: Debug import manifest
-  ansible.builtin.debug:
-    var: _ocp4_workload_register_sno_import_manifest
+- name: Split import manifest into individual resource documents
+  ansible.builtin.set_fact:
+    _ocp4_workload_register_sno_import_resources: "{{ _ocp4_workload_register_sno_import_manifest | split('---') | select('match', '(?s).*\\S.*') | list }}"
 
-- name: Deploy import manifest to target cluster
+- name: Deploy import manifest resources to target cluster
   kubernetes.core.k8s:
     host: "{{ ocp4_workload_register_sno_aws_openshift_api_url }}"
     api_key: "{{ ocp4_workload_register_sno_aws_openshift_api_token }}"
     validate_certs: false
     state: present
-    definition: "{{ _ocp4_workload_register_sno_import_manifest }}"
+    definition: "{{ item }}"
+    apply: true
+  loop: "{{ _ocp4_workload_register_sno_import_resources }}"
   register: r_import_result
-  retries: 1
-  delay: 30
+  retries: 3
+  delay: 10
   until: r_import_result is not failed
