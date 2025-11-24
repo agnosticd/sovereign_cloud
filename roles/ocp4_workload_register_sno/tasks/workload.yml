@@ -35,7 +35,12 @@
   ansible.builtin.set_fact:
     _ocp4_workload_register_sno_import_resources: "{{ _ocp4_workload_register_sno_import_manifest | split('---') | select('match', '(?s).*\\S.*') | list }}"
 
-- name: Deploy import manifest resources to target cluster
+- name: Separate Klusterlet CR from other resources
+  ansible.builtin.set_fact:
+    _ocp4_workload_register_sno_klusterlet_cr: "{{ _ocp4_workload_register_sno_import_resources | select('search', 'kind: Klusterlet') | first }}"
+    _ocp4_workload_register_sno_base_resources: "{{ _ocp4_workload_register_sno_import_resources | reject('search', 'kind: Klusterlet') | list }}"
+
+- name: Deploy base import manifest resources to target cluster
   kubernetes.core.k8s:
     host: "{{ ocp4_workload_register_sno_aws_openshift_api_url }}"
     api_key: "{{ ocp4_workload_register_sno_aws_openshift_api_token }}"
@@ -43,8 +48,29 @@
     state: present
     definition: "{{ item }}"
     apply: true
-  loop: "{{ _ocp4_workload_register_sno_import_resources }}"
-  register: r_import_result
-  retries: 3
+  loop: "{{ _ocp4_workload_register_sno_base_resources }}"
+
+- name: Wait for Klusterlet CRD to be available
+  kubernetes.core.k8s_info:
+    host: "{{ ocp4_workload_register_sno_aws_openshift_api_url }}"
+    api_key: "{{ ocp4_workload_register_sno_aws_openshift_api_token }}"
+    validate_certs: false
+    api_version: apiextensions.k8s.io/v1
+    kind: CustomResourceDefinition
+    name: klusterlets.operator.open-cluster-management.io
+  register: r_klusterlet_crd
+  retries: 30
   delay: 10
-  until: r_import_result is not failed
+  until:
+  - r_klusterlet_crd.resources | length > 0
+  - r_klusterlet_crd.resources[0].status.conditions is defined
+  - r_klusterlet_crd.resources[0].status.conditions | selectattr('type', 'equalto', 'Established') | selectattr('status', 'equalto', 'True') | list | length > 0
+
+- name: Deploy Klusterlet CR to target cluster
+  kubernetes.core.k8s:
+    host: "{{ ocp4_workload_register_sno_aws_openshift_api_url }}"
+    api_key: "{{ ocp4_workload_register_sno_aws_openshift_api_token }}"
+    validate_certs: false
+    state: present
+    definition: "{{ _ocp4_workload_register_sno_klusterlet_cr }}"
+    apply: true
